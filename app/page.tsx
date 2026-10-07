@@ -1,25 +1,814 @@
-'use client';
-import {useState,useEffect} from 'react';
-import {articles} from './learn-articles';
-import {BookOpen,Layers,NotebookPen,Play,Clock,Check,Plus,Trash2,ChevronUp,ChevronDown,Lightbulb,Menu} from 'lucide-react';
-type Step={name:string;ai:boolean;description:string};
-type Method={title:string;category:string;time:string;description:string;steps:Step[]};
-const blocks:Step[]=[{name:'Самостоятельная работа',ai:false,description:'Попробуй решить задачу самостоятельно. Запиши свой подход и первые шаги.'},{name:'Опиши затруднение',ai:false,description:'Что ты понял? Что уже попробовал? В каком месте возник вопрос?'},{name:'Подсказка ИИ',ai:true,description:'Сначала сформулируй точный вопрос. Проси небольшой следующий шаг, а не готовое решение.'},{name:'Попробуй ещё раз',ai:false,description:'Вернись к задаче с подсказкой. Запиши, что изменилось в твоём подходе.'},{name:'Объясни своими словами',ai:false,description:'Объясни ход решения так, будто рассказываешь однокурснику. Почему он работает?'},{name:'Обратная связь ИИ',ai:true,description:'Попроси проверить своё объяснение и найти пробелы в понимании.'},{name:'Проверка информации',ai:false,description:'Сверь утверждения с учебником или первоисточником. Запиши источник и результат проверки.'},{name:'Рефлексия',ai:false,description:'Что теперь ты умеешь делать без помощи? Что стоит повторить?'}];
-const initial:Method[]=[{title:'Разобраться, а не скопировать',category:'Программирование',time:'25–35 мин',description:'От первой самостоятельной попытки до объяснения своего решения.',steps:blocks.slice(0,6)},{title:'Решить и объяснить',category:'Математика',time:'20–30 мин',description:'Найди подход к задаче и проверь, понимаешь ли каждый шаг.',steps:[blocks[0],blocks[1],blocks[2],blocks[3],blocks[4],blocks[7]]},{title:'Вспомнить без подсказки',category:'Подготовка к экзамену',time:'15–20 мин',description:'Сначала воспроизведи тему по памяти, затем найди пробелы.',steps:[{name:'Вспомни по памяти',ai:false,description:'Не открывая конспект, запиши всё, что помнишь о теме.'},blocks[5],blocks[6],blocks[7]]},{title:'Текст с собственной мыслью',category:'Письмо',time:'30–40 мин',description:'Сохрани авторство: ИИ выступает критиком, а не пишет за тебя.',steps:[blocks[0],blocks[4],blocks[5],blocks[3],blocks[6]]}];
-const lessons=[{title:'Помощь или замена?',tag:'01 · Роль ИИ',text:'ИИ помогает, когда ты остаёшься автором решения: делаешь попытку, задаёшь вопрос и оцениваешь ответ. Если готовый ответ заменяет эти действия, выполненное задание ещё не означает, что ты научился.',task:'Ты застрял на задаче. Что лучше сохраняет твоё участие?',options:['Попросить готовое решение и переписать','Описать свою попытку и попросить одну подсказку'],correct:1},{title:'Уверенный ответ может быть ошибкой',tag:'02 · Проверка',text:'Модель может выдавать правдоподобные, но неверные факты, ссылки и объяснения. Проверяй важные утверждения по учебнику и первоисточникам. Красивое объяснение — ещё не доказательство.',task:'ИИ назвал источник. Как проверить ответ?',options:['Найти источник и проверить, что он действительно подтверждает утверждение','Довериться подробному оформлению'],correct:0},{title:'Вернуть себе понимание',tag:'03 · Самостоятельность',text:'После помощи закрой ответ и объясни идею своими словами. Затем попробуй похожее задание самостоятельно. Это помогает заметить разницу между узнаванием ответа и пониманием.',task:'Как проверить, что ты понял решение?',options:['Перечитать ответ ещё один раз','Решить похожую задачу без подсказки'],correct:1}];
-export default function Home(){
-const [view,setView]=useState('methods'),[methods,setMethods]=useState(initial),[selected,setSelected]=useState<Method|null>(null),[filter,setFilter]=useState('Все'),[lesson,setLesson]=useState(0),[answer,setAnswer]=useState<number|null>(null),[learned,setLearned]=useState<number[]>([]),[draft,setDraft]=useState<Step[]>([blocks[0],blocks[2],blocks[4],blocks[7]]),[title,setTitle]=useState('Моя учебная методика'),[notice,setNotice]=useState(''),[run,setRun]=useState<Method|null>(null),[index,setIndex]=useState(0),[notes,setNotes]=useState<Record<number,string>>({}),[response,setResponse]=useState(''),[done,setDone]=useState(false),[seconds,setSeconds]=useState(600),[ticking,setTicking]=useState(false);
-useEffect(()=>{try{const m=localStorage.getItem('oylan-methods');if(m)setMethods([...initial,...JSON.parse(m)]);const l=localStorage.getItem('oylan-learned');if(l)setLearned(JSON.parse(l));}catch{}},[]);
-useEffect(()=>{if(!ticking||seconds===0)return;const t=setInterval(()=>setSeconds(s=>Math.max(0,s-1)),1000);return()=>clearInterval(t);},[ticking,seconds]);
-const nav=(v:string)=>{setView(v);setSelected(null);setNotice('');};
-const start=(m:Method)=>{setRun(m);setIndex(0);setNotes({});setResponse('');setDone(false);setTicking(false);setSeconds(600);setView('run');};
-const step=run?.steps[index];
-const save=()=>{if(!title.trim()||draft.length<2){setNotice('Добавь название и хотя бы два этапа.');return;}const m={title:title.trim(),category:'Мои методики',time:'Свой темп',description:'Собранная тобой последовательность учебных действий.',steps:[...draft]};const next=[...methods,m];setMethods(next);try{localStorage.setItem('oylan-methods',JSON.stringify(next.slice(initial.length)));setNotice('Методика сохранена в этом браузере. Найдёшь её в библиотеке.');}catch{setNotice('Методика добавлена на время текущей сессии.');}};
-return <div className="shell"><aside><a className="brand" href="#" onClick={e=>{e.preventDefault();nav('methods');}}>oylan<span>место, где можно подумать</span></a><div className="side-label">Что здесь есть:</div><nav>{[['methods','Методики',Layers],['learn','Основы ИИ-грамотности',BookOpen],['builder','Конструктор',NotebookPen]].map(([id,label,Icon])=><button className={view===id?'active':''} key={String(id)} onClick={()=>nav(String(id))}>{typeof Icon!=='string'&&<Icon size={19}/>}<span>{String(label)}</span></button>)}</nav><div className="side-note"><Lightbulb size={23}/><p>Сначала твоя мысль.<br/>Потом помощь ИИ.</p><small>Оставляй место для собственной попытки.</small></div><div className="edition">OYLAN / ПРОБНАЯ ВЕРСИЯ<br/>Учиться осознанно.</div></aside><main><header><span>OYLAN / учёба с ИИ</span><span className="demo">пробная версия</span></header>
-{view==='methods'&&!selected&&<><div className="heading"><div><div className="eyebrow">Полка с методиками</div><h1>Как будем учиться сегодня?</h1><p>Выбери задачу. У каждого этапа — своя роль для тебя и ИИ.</p></div><button className="primary" onClick={()=>nav('builder')}><Plus size={18}/>Собрать методику</button></div><div className="principle"><div><strong>Сначала пробуем сами. Потом спрашиваем.</strong><p>Попробовать самому → получить помощь → проверить понимание.</p></div></div><div className="tabs">{['Все','Программирование','Математика','Подготовка к экзамену','Письмо','Мои методики'].map(f=><button key={f} onClick={()=>setFilter(f)} className={filter===f?'chosen':''}>{f}</button>)}</div><div className="cards">{methods.filter(m=>filter==='Все'||m.category===filter).map((m,i)=><article className="method" key={i}><div className="card-top"><span>{m.category}</span><span className="card-num">{String(i+1).padStart(2,'0')}</span></div><h2>{m.title}</h2><p>{m.description}</p><div className="mini-steps">{m.steps.slice(0,4).map((s,j)=><span key={j} className={s.ai?'ai-chip':''}>{s.ai?'ИИ':'Сам'} · {s.name}</span>)}{m.steps.length>4&&<span>+{m.steps.length-4} этапа</span>}</div><footer><span><Clock size={15}/>{m.time}</span><button onClick={()=>setSelected(m)}>Открыть методику</button></footer></article>)}</div>{filter==='Мои методики'&&methods.length===initial.length&&<div className="empty">Здесь появятся твои методики. Собери первую в конструкторе.</div>}<div className="bottom-note"><BookOpen size={20}/><span>Впервые здесь? Разберись, какую помощь стоит просить у ИИ.</span><button onClick={()=>nav('learn')}>Открыть Learn</button></div></>}
-{view==='methods'&&selected&&<><button className="back" onClick={()=>setSelected(null)}>Назад к библиотеке</button><div className="eyebrow">{selected.category} / {selected.time}</div><h1>{selected.title}</h1><p>{selected.description}</p><div className="detail-grid"><section className="paper"><h2>Порядок работы</h2>{selected.steps.map((s,i)=><div className="step-row" key={i}><span className="number">{i+1}</span><div><strong>{s.name}</strong><p>{s.description}</p></div><span className={s.ai?'badge ai':'badge'}>{s.ai?'С ИИ':'Самостоятельно'}</span></div>)}</section><section className="paper side-panel"><h2>Твоя роль — главная</h2><p>Записывай свои мысли на каждом этапе. Возвращайся к самостоятельной работе после подсказки.</p><p className="small">В этой версии ответы ИИ заранее подготовлены для демонстрации процесса.</p><button className="primary" onClick={()=>start(selected)}><Play size={17}/>Начать методику</button><button className="secondary" onClick={()=>{setDraft([...selected.steps]);setTitle(selected.title+' — моя версия');nav('builder');}}>Адаптировать в конструкторе</button></section></div></>}
-{view==='learn'&&<><div className="eyebrow">Почитать про ИИ</div><h1>Использовать ИИ, продолжая думать</h1><p>Три учебные статьи: объяснения, разборы ситуаций и вопросы для самопроверки.</p><div className="learn-grid"><div className="lesson-list">{lessons.map((l,i)=><button className={lesson===i?'current':''} key={i} onClick={()=>{setLesson(i);setAnswer(null);}}><span>{l.tag}</span><strong>{l.title}</strong>{learned.includes(i)&&<Check size={18}/>}</button>)}<small>Пройдено {learned.length} из 3</small></div><section className="paper lesson"><div className="eyebrow">{lessons[lesson].tag}</div><h2>{lessons[lesson].title}</h2><div className="reading-meta">{articles[lesson].time} чтения · Учебный разбор OYLAN</div><p className="article-intro">{articles[lesson].intro}</p><div className="article-contents"><strong>В этом материале</strong>{articles[lesson].sections.map((section,i)=><a key={i} href={`#learn-${lesson}-${i}`}>{String(i+1).padStart(2,'0')} · {section.title}</a>)}</div><div className="article-body">{articles[lesson].sections.map((section,i)=><section id={`learn-${lesson}-${i}`} key={i}><h3>{section.title}</h3>{section.paragraphs.map((p,j)=><p key={j}>{p}</p>)}</section>)}</div><div className="article-takeaway"><span>МЫСЛЬ ДЛЯ ПРАКТИКИ</span><p>{articles[lesson].takeaway}</p></div><section className="article-sources"><h3>Научная основа и границы выводов</h3><p>{articles[lesson].research}</p>{articles[lesson].sources.map(source=><a href={source.url} key={source.url} target="_blank" rel="noopener noreferrer">{source.label}</a>)}<small>Это авторский учебный материал OYLAN, а не перевод или полный пересказ научной статьи. Ссылки ведут к оригинальным публикациям.</small></section><div className="question"><strong>{lessons[lesson].task}</strong>{lessons[lesson].options.map((o,i)=><button key={i} className={answer===i?'picked':''} onClick={()=>{setAnswer(i);if(i===lessons[lesson].correct){const n=Array.from(new Set([...learned,lesson]));setLearned(n);try{localStorage.setItem('oylan-learned',JSON.stringify(n));}catch{}}}}>{o}</button>)}{answer!==null&&<p role="status">{answer===lessons[lesson].correct?'Верно. Ты сохраняешь свою роль в обучении.':'Попробуй ещё раз: какое действие помогает проверить собственное понимание?'}</p>}</div><div className="article-next"><button className="secondary" onClick={()=>{if(lesson<lessons.length-1){setLesson(lesson+1);setAnswer(null);window.scrollTo({top:0,behavior:'smooth'});}else nav('methods');}}>{lesson<lessons.length-1?'Следующая статья':'Перейти к методикам'}</button></div></section></div></>}
-{view==='builder'&&<><div className="eyebrow">Конструктор методики</div><h1>Одна задача. Твой порядок действий.</h1><p>Добавляй этапы и меняй их порядок. Продумай, что ты сделаешь до и после помощи ИИ.</p><div className="builder-grid"><section className="paper"><h2>Учебные блоки</h2>{blocks.map((b,i)=><button className="block-option" key={i} onClick={()=>setDraft([...draft,b])}><span><strong>{b.name}</strong><small>{b.ai?'Помощь ИИ':'Самостоятельный этап'}</small></span><Plus size={18}/></button>)}</section><section className="paper"><label htmlFor="method-title">Название методики</label><input id="method-title" value={title} onChange={e=>setTitle(e.target.value)}/><div className="draft">{draft.map((s,i)=><div className="draft-row" key={i}><span>{i+1}</span><div><strong>{s.name}</strong><small>{s.ai?'С ИИ':'Самостоятельно'}</small></div><button aria-label="Поднять этап" disabled={i===0} onClick={()=>{const d=[...draft];[d[i-1],d[i]]=[d[i],d[i-1]];setDraft(d);}}><ChevronUp size={17}/></button><button aria-label="Опустить этап" disabled={i===draft.length-1} onClick={()=>{const d=[...draft];[d[i+1],d[i]]=[d[i],d[i+1]];setDraft(d);}}><ChevronDown size={17}/></button><button aria-label="Удалить этап" onClick={()=>setDraft(draft.filter((_,j)=>i!==j))}><Trash2 size={17}/></button></div>)}</div>{draft.every(s=>s.ai)&&<p>Добавь самостоятельную попытку, чтобы помощь ИИ не заменила всю работу.</p>}<div className="actions"><button className="primary" onClick={save}>Сохранить методику</button><button className="secondary" disabled={draft.length<2||!title.trim()} onClick={()=>start({title,category:'Моя методика',time:'Свой темп',description:'',steps:draft})}>Попробовать</button></div>{notice&&<p role="status">{notice}</p>}<p className="small">Методики сохраняются в этом браузере. Общая библиотека сообщества — следующий этап проекта.</p></section></div></>}
-{view==='run'&&run&&<><div className="eyebrow">Рабочая тетрадь / {run.title}</div><h1>{done?'Методика пройдена':step?.name}</h1><div className="run-grid"><section className="paper">{done?<><h2>Что осталось с тобой?</h2><p>Сравни первую попытку и последнее объяснение. Попробуй похожее задание без помощи.</p>{run.steps.map((s,i)=><div className="summary" key={i}><strong>{i+1}. {s.name}</strong><p>{notes[i]||'Запись не добавлена'}</p></div>)}<button className="primary" onClick={()=>nav('methods')}>Вернуться к методикам</button></>:<><span className={step?.ai?'badge ai':'badge'}>{step?.ai?'Этап с помощью ИИ':'Самостоятельный этап'}</span><p>{step?.description}</p>{index===0&&<div className="example"><strong>Учебная задача</strong><p>Используй свою задачу. Для программирования можно попробовать: найти второе по величине уникальное число в списке [4, 7, 7, 2, 9].</p></div>}{!step?.ai&&<div className="timer"><Clock size={18}/><span>{Math.floor(seconds/60)}:{String(seconds%60).padStart(2,'0')}</span><button onClick={()=>setTicking(!ticking)}>{ticking?'Пауза':'Включить таймер'}</button><small>10 минут на собственную попытку</small></div>}<label htmlFor="notes">{step?.ai?'Твой вопрос или объяснение для ИИ':'Твоя рабочая запись'}</label><textarea id="notes" rows={7} value={notes[index]||''} onChange={e=>setNotes({...notes,[index]:e.target.value})} placeholder="Запиши свои мысли здесь…"/>{step?.ai&&<><button className="secondary" disabled={!notes[index]?.trim()} onClick={()=>setResponse(step.name==='Подсказка ИИ'?'Демонстрационная подсказка к примеру: что изменится, если сначала убрать повторяющиеся числа? Подумай, как после этого определить второе по величине значение. Готовый код пока не нужен.':'Демонстрационная проверка: объясни, почему выбранный подход работает, и проверь крайние случаи. Для примера со списком: что делать, если уникальных чисел меньше двух? Это образец обратной связи, а не оценка твоего текста.')}>Показать пример ответа ИИ</button><p className="small">Демо без подключённой модели. Ответ заранее подготовлен и не анализирует твой текст.</p>{response&&<div className="ai-response"><strong>Пример ответа наставника</strong><p>{response}</p></div>}</>}<div className="actions"><button className="secondary" disabled={index===0} onClick={()=>{setIndex(index-1);setResponse('');setTicking(false);}}>Предыдущий этап</button><button className="primary" disabled={!notes[index]?.trim()} onClick={()=>{if(index===run.steps.length-1)setDone(true);else setIndex(index+1);setResponse('');setTicking(false);}}>{index===run.steps.length-1?'Завершить':'Следующий этап'}</button></div></>}</section><section className="paper run-outline"><h2>Маршрут методики</h2>{run.steps.map((s,i)=><div className={i===index&&!done?'route current':'route'} key={i}><span>{i<index||done?<Check size={16}/>:i+1}</span><div>{s.name}<small>{s.ai?'С ИИ':'Самостоятельно'}</small></div></div>)}<p className="small">Записи прохождения остаются в текущей сессии. Скопируй важные мысли перед закрытием страницы.</p></section></div></>}
-<footer className="page-footer"><span>OYLAN — думай, пробуй, проверяй.</span><span>Сайт ещё в работе. Можно пробовать!</span></footer></main></div>;
+"use client";
+import { useState, useEffect } from "react";
+import { articles } from "./learn-articles";
+import {
+  BookOpen,
+  Layers,
+  NotebookPen,
+  Play,
+  Clock,
+  Check,
+  Plus,
+  Trash2,
+  ChevronUp,
+  ChevronDown,
+  Lightbulb,
+  Menu,
+} from "lucide-react";
+
+type Step = { name: string; ai: boolean; description: string };
+type Method = {
+  title: string;
+  category: string;
+  time: string;
+  description: string;
+  steps: Step[];
+};
+
+const blocks: Step[] = [
+  {
+    name: "Самостоятельная работа",
+    ai: false,
+    description:
+      "Попробуй решить задачу самостоятельно. Запиши свой подход и первые шаги.",
+  },
+  {
+    name: "Опиши затруднение",
+    ai: false,
+    description:
+      "Что ты понял? Что уже попробовал? В каком месте возник вопрос?",
+  },
+  {
+    name: "Подсказка ИИ",
+    ai: true,
+    description:
+      "Сначала сформулируй точный вопрос. Проси небольшой следующий шаг, а не готовое решение.",
+  },
+  {
+    name: "Попробуй ещё раз",
+    ai: false,
+    description:
+      "Вернись к задаче с подсказкой. Запиши, что изменилось в твоём подходе.",
+  },
+  {
+    name: "Объясни своими словами",
+    ai: false,
+    description:
+      "Объясни ход решения так, будто рассказываешь однокурснику. Почему он работает?",
+  },
+  {
+    name: "Обратная связь ИИ",
+    ai: true,
+    description:
+      "Попроси проверить своё объяснение и найти пробелы в понимании.",
+  },
+  {
+    name: "Проверка информации",
+    ai: false,
+    description:
+      "Сверь утверждения с учебником или первоисточником. Запиши источник и результат проверки.",
+  },
+  {
+    name: "Рефлексия",
+    ai: false,
+    description: "Что теперь ты умеешь делать без помощи? Что стоит повторить?",
+  },
+];
+const initial: Method[] = [
+  {
+    title: "Разобраться, а не скопировать",
+    category: "Программирование",
+    time: "25–35 мин",
+    description:
+      "От первой самостоятельной попытки до объяснения своего решения.",
+    steps: blocks.slice(0, 6),
+  },
+  {
+    title: "Решить и объяснить",
+    category: "Математика",
+    time: "20–30 мин",
+    description: "Найди подход к задаче и проверь, понимаешь ли каждый шаг.",
+    steps: [blocks[0], blocks[1], blocks[2], blocks[3], blocks[4], blocks[7]],
+  },
+  {
+    title: "Вспомнить без подсказки",
+    category: "Подготовка к экзамену",
+    time: "15–20 мин",
+    description: "Сначала воспроизведи тему по памяти, затем найди пробелы.",
+    steps: [
+      {
+        name: "Вспомни по памяти",
+        ai: false,
+        description: "Не открывая конспект, запиши всё, что помнишь о теме.",
+      },
+      blocks[5],
+      blocks[6],
+      blocks[7],
+    ],
+  },
+  {
+    title: "Текст с собственной мыслью",
+    category: "Письмо",
+    time: "30–40 мин",
+    description:
+      "Сохрани авторство: ИИ выступает критиком, а не пишет за тебя.",
+    steps: [blocks[0], blocks[4], blocks[5], blocks[3], blocks[6]],
+  },
+];
+const lessons = [
+  {
+    title: "Помощь или замена?",
+    tag: "01 · Роль ИИ",
+    text: "ИИ помогает, когда ты остаёшься автором решения: делаешь попытку, задаёшь вопрос и оцениваешь ответ. Если готовый ответ заменяет эти действия, выполненное задание ещё не означает, что ты научился.",
+    task: "Ты застрял на задаче. Что лучше сохраняет твоё участие?",
+    options: [
+      "Попросить готовое решение и переписать",
+      "Описать свою попытку и попросить одну подсказку",
+    ],
+    correct: 1,
+  },
+  {
+    title: "Уверенный ответ может быть ошибкой",
+    tag: "02 · Проверка",
+    text: "Модель может выдавать правдоподобные, но неверные факты, ссылки и объяснения. Проверяй важные утверждения по учебнику и первоисточникам. Красивое объяснение — ещё не доказательство.",
+    task: "ИИ назвал источник. Как проверить ответ?",
+    options: [
+      "Найти источник и проверить, что он действительно подтверждает утверждение",
+      "Довериться подробному оформлению",
+    ],
+    correct: 0,
+  },
+  {
+    title: "Вернуть себе понимание",
+    tag: "03 · Самостоятельность",
+    text: "После помощи закрой ответ и объясни идею своими словами. Затем попробуй похожее задание самостоятельно. Это помогает заметить разницу между узнаванием ответа и пониманием.",
+    task: "Как проверить, что ты понял решение?",
+    options: [
+      "Перечитать ответ ещё один раз",
+      "Решить похожую задачу без подсказки",
+    ],
+    correct: 1,
+  },
+];
+
+export default function Home() {
+  const [view, setView] = useState("methods"),
+    [methods, setMethods] = useState(initial),
+    [selected, setSelected] = useState<Method | null>(null),
+    [filter, setFilter] = useState("Все"),
+    [lesson, setLesson] = useState(0),
+    [answer, setAnswer] = useState<number | null>(null),
+    [learned, setLearned] = useState<number[]>([]),
+    [draft, setDraft] = useState<Step[]>([
+      blocks[0],
+      blocks[2],
+      blocks[4],
+      blocks[7],
+    ]),
+    [title, setTitle] = useState("Моя учебная методика"),
+    [notice, setNotice] = useState(""),
+    [run, setRun] = useState<Method | null>(null),
+    [index, setIndex] = useState(0),
+    [notes, setNotes] = useState<Record<number, string>>({}),
+    [response, setResponse] = useState(""),
+    [done, setDone] = useState(false),
+    [seconds, setSeconds] = useState(600),
+    [ticking, setTicking] = useState(false);
+  useEffect(() => {
+    try {
+      const m = localStorage.getItem("oylan-methods");
+      if (m) setMethods([...initial, ...JSON.parse(m)]);
+      const l = localStorage.getItem("oylan-learned");
+      if (l) setLearned(JSON.parse(l));
+    } catch {}
+  }, []);
+  useEffect(() => {
+    if (!ticking || seconds === 0) return;
+    const t = setInterval(() => setSeconds((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(t);
+  }, [ticking, seconds]);
+  const nav = (v: string) => {
+    setView(v);
+    setSelected(null);
+    setNotice("");
+  };
+  const start = (m: Method) => {
+    setRun(m);
+    setIndex(0);
+    setNotes({});
+    setResponse("");
+    setDone(false);
+    setTicking(false);
+    setSeconds(600);
+    setView("run");
+  };
+  const step = run?.steps[index];
+  const save = () => {
+    if (!title.trim() || draft.length < 2) {
+      setNotice("Добавь название и хотя бы два этапа.");
+      return;
+    }
+    const m = {
+      title: title.trim(),
+      category: "Мои методики",
+      time: "Свой темп",
+      description: "Собранная тобой последовательность учебных действий.",
+      steps: [...draft],
+    };
+    const next = [...methods, m];
+    setMethods(next);
+    try {
+      localStorage.setItem(
+        "oylan-methods",
+        JSON.stringify(next.slice(initial.length)),
+      );
+      setNotice("Методика сохранена в этом браузере. Найдёшь её в библиотеке.");
+    } catch {
+      setNotice("Методика добавлена на время текущей сессии.");
+    }
+  };
+  return (
+    <div className="shell">
+      <aside>
+        <a
+          className="brand"
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            nav("methods");
+          }}
+        >
+          OYLAN.<span>с точкой выглядит круче, согласитесь?</span>
+        </a>
+        <div className="side-label">Наш арсенал:</div>
+        <nav>
+          {[
+            ["methods", "Методики", Layers],
+            ["learn", "Основы ИИ-грамотности", BookOpen],
+            ["builder", "Конструктор", NotebookPen],
+          ].map(([id, label, Icon]) => (
+            <button
+              className={view === id ? "active" : ""}
+              key={String(id)}
+              onClick={() => nav(String(id))}
+            >
+              {typeof Icon !== "string" && <Icon size={19} />}
+              <span>{String(label)}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="side-note">
+          <Lightbulb size={23} />
+          <p>
+            Сначала OYLAN.
+            <br />
+            Потом свой гпт спрашивай.
+          </p>
+          <small>Не видевший горечи, сладость не познает.
+          </small>
+        </div>
+        <div className="edition">
+          OYLAN / ПРОБНАЯ ВЕРСИЯ
+          <br />
+          Даурен написал это в 2 часа ночи.
+        </div>
+      </aside>
+      <main>
+        <header>
+          <span>OYLAN / учёба с ИИ / Привет ребята, как ваши дела? А мне послезавтра АДС контест сдавать</span>
+          <span className="demo">Полуживая версия</span>
+        </header>
+        {view === "methods" && !selected && (
+          <>
+            <div className="heading">
+              <div>
+                <div className="eyebrow">Страница с методиками</div>
+                <h1>Оставь уже этот ИИ и познай вкус реального обучения</h1>
+                <p>Выбери задачу. У каждого этапа своя роль для тебя и для ИИ.</p>
+              </div>
+              <button className="primary" onClick={() => nav("builder")}>
+                <Plus size={18} />
+                Собрать методику
+              </button>
+            </div>
+            <div className="principle">
+              <div>
+                <strong>Сначала пробуем сами. Потом как пойдет.</strong>
+                <p>
+                  Попробовать самому → получить помощь → проверить понимание.
+                </p>
+              </div>
+            </div>
+            <div className="tabs">
+              {[
+                "Все",
+                "Программирование",
+                "Математика",
+                "Подготовка к экзамену",
+                "Письмо",
+                "Мои методики",
+              ].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={filter === f ? "chosen" : ""}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+            <div className="cards">
+              {methods
+                .filter((m) => filter === "Все" || m.category === filter)
+                .map((m, i) => (
+                  <article className="method" key={i}>
+                    <div className="card-top">
+                      <span>{m.category}</span>
+                      <span className="card-num">
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                    </div>
+                    <h2>{m.title}</h2>
+                    <p>{m.description}</p>
+                    <div className="mini-steps">
+                      {m.steps.slice(0, 4).map((s, j) => (
+                        <span key={j} className={s.ai ? "ai-chip" : ""}>
+                          {s.ai ? "ИИ" : "Сам"} · {s.name}
+                        </span>
+                      ))}
+                      {m.steps.length > 4 && (
+                        <span>+{m.steps.length - 4} этапа</span>
+                      )}
+                    </div>
+                    <footer>
+                      <span>
+                        <Clock size={15} />
+                        {m.time}
+                      </span>
+                      <button onClick={() => setSelected(m)}>
+                        Открыть методику
+                      </button>
+                    </footer>
+                  </article>
+                ))}
+            </div>
+            {filter === "Мои методики" && methods.length === initial.length && (
+              <div className="empty">
+                Здесь появятся твои методики. Собери первую в конструкторе.
+              </div>
+            )}
+            <div className="bottom-note">
+              <BookOpen size={20} />
+              <span>
+                Впервые здесь? Разберись, какую помощь стоит просить у ИИ, и не нужна ли помощь тебе.
+              </span>
+              <button onClick={() => nav("learn")}>Открыть Learn</button>
+            </div>
+          </>
+        )}
+        {view === "methods" && selected && (
+          <>
+            <button className="back" onClick={() => setSelected(null)}>
+              Назад к библиотеке
+            </button>
+            <div className="eyebrow">
+              {selected.category} / {selected.time}
+            </div>
+            <h1>{selected.title}</h1>
+            <p>{selected.description}</p>
+            <div className="detail-grid">
+              <section className="paper">
+                <h2>Порядок работы</h2>
+                {selected.steps.map((s, i) => (
+                  <div className="step-row" key={i}>
+                    <span className="number">{i + 1}</span>
+                    <div>
+                      <strong>{s.name}</strong>
+                      <p>{s.description}</p>
+                    </div>
+                    <span className={s.ai ? "badge ai" : "badge"}>
+                      {s.ai ? "С ИИ" : "Самостоятельно"}
+                    </span>
+                  </div>
+                ))}
+              </section>
+              <section className="paper side-panel">
+                <h2>Твоя роль должна быть главной</h2>
+                <p>
+                  Записывай свои мысли на каждом этапе. Возвращайся к
+                  самостоятельной работе после подсказки.
+                </p>
+                <p className="small">
+                  В этой версии ответы ИИ заранее подготовлены для демонстрации
+                  процесса, я не могу позволить себе API какой то модели, простите...
+                </p>
+                <button className="primary" onClick={() => start(selected)}>
+                  <Play size={17} />
+                  Начать методику
+                </button>
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    setDraft([...selected.steps]);
+                    setTitle(selected.title + " это моя версия");
+                    nav("builder");
+                  }}
+                >
+                  Адаптировать в конструкторе
+                </button>
+              </section>
+            </div>
+          </>
+        )}
+        {view === "learn" && (
+          <>
+            <div className="eyebrow">Почитать про ИИ</div>
+            <h1>Использовать ИИ, продолжая пользоватся мозгом</h1>
+            <p>
+              Три учебные статьи: объяснения, разборы ситуаций и вопросы для
+              самопроверки.
+            </p>
+            <div className="learn-grid">
+              <div className="lesson-list">
+                {lessons.map((l, i) => (
+                  <button
+                    className={lesson === i ? "current" : ""}
+                    key={i}
+                    onClick={() => {
+                      setLesson(i);
+                      setAnswer(null);
+                    }}
+                  >
+                    <span>{l.tag}</span>
+                    <strong>{l.title}</strong>
+                    {learned.includes(i) && <Check size={18} />}
+                  </button>
+                ))}
+                <small>Пройдено {learned.length} из 3</small>
+              </div>
+              <section className="paper lesson">
+                <div className="eyebrow">{lessons[lesson].tag}</div>
+                <h2>{lessons[lesson].title}</h2>
+                <div className="reading-meta">
+                  {articles[lesson].time} чтения · Учебный разбор OYLAN
+                </div>
+                <p className="article-intro">{articles[lesson].intro}</p>
+                <div className="article-contents">
+                  <strong>В этом материале</strong>
+                  {articles[lesson].sections.map((section, i) => (
+                    <a key={i} href={`#learn-${lesson}-${i}`}>
+                      {String(i + 1).padStart(2, "0")} · {section.title}
+                    </a>
+                  ))}
+                </div>
+                <div className="article-body">
+                  {articles[lesson].sections.map((section, i) => (
+                    <section id={`learn-${lesson}-${i}`} key={i}>
+                      <h3>{section.title}</h3>
+                      {section.paragraphs.map((p, j) => (
+                        <p key={j}>{p}</p>
+                      ))}
+                    </section>
+                  ))}
+                </div>
+                <div className="article-takeaway">
+                  <span>МЫСЛЬ ДЛЯ ПРАКТИКИ</span>
+                  <p>{articles[lesson].takeaway}</p>
+                </div>
+                <section className="article-sources">
+                  <h3>Научная основа и границы выводов</h3>
+                  <p>{articles[lesson].research}</p>
+                  {articles[lesson].sources.map((source) => (
+                    <a
+                      href={source.url}
+                      key={source.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {source.label}
+                    </a>
+                  ))}
+                  <small>
+                    Это авторский учебный материал OYLAN, а не перевод или
+                    полный пересказ научной статьи. Ссылки ведут к оригинальным
+                    публикациям.
+                  </small>
+                </section>
+                <div className="question">
+                  <strong>{lessons[lesson].task}</strong>
+                  {lessons[lesson].options.map((o, i) => (
+                    <button
+                      key={i}
+                      className={answer === i ? "picked" : ""}
+                      onClick={() => {
+                        setAnswer(i);
+                        if (i === lessons[lesson].correct) {
+                          const n = Array.from(new Set([...learned, lesson]));
+                          setLearned(n);
+                          try {
+                            localStorage.setItem(
+                              "oylan-learned",
+                              JSON.stringify(n),
+                            );
+                          } catch {}
+                        }
+                      }}
+                    >
+                      {o}
+                    </button>
+                  ))}
+                  {answer !== null && (
+                    <p role="status">
+                      {answer === lessons[lesson].correct
+                        ? "Верно. Тебя еще не заменил ИИ."
+                        : "Попробуй ещё раз. Тебя заменил ИИ!"}
+                    </p>
+                  )}
+                </div>
+                <div className="article-next">
+                  <button
+                    className="secondary"
+                    onClick={() => {
+                      if (lesson < lessons.length - 1) {
+                        setLesson(lesson + 1);
+                        setAnswer(null);
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      } else nav("methods");
+                    }}
+                  >
+                    {lesson < lessons.length - 1
+                      ? "Следующая статья"
+                      : "Перейти к методикам"}
+                  </button>
+                </div>
+              </section>
+            </div>
+          </>
+        )}
+        {view === "builder" && (
+          <>
+            <div className="eyebrow">Конструктор методики</div>
+            <h1>За слабого думает ИИ, а сильный уже <br/> создал свою методику в OYLAN!.</h1>
+            <p>
+              Добавляй этапы и меняй их порядок. Продумай, что ты сделаешь до и
+              после помощи ИИ.
+            </p>
+            <div className="builder-grid">
+              <section className="paper">
+                <h2>Учебные блоки</h2>
+                {blocks.map((b, i) => (
+                  <button
+                    className="block-option"
+                    key={i}
+                    onClick={() => setDraft([...draft, b])}
+                  >
+                    <span>
+                      <strong>{b.name}</strong>
+                      <small>
+                        {b.ai ? "Помощь ИИ" : "Самостоятельный этап"}
+                      </small>
+                    </span>
+                    <Plus size={18} />
+                  </button>
+                ))}
+              </section>
+              <section className="paper">
+                <label htmlFor="method-title">Название методики</label>
+                <input
+                  id="method-title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+                <div className="draft">
+                  {draft.map((s, i) => (
+                    <div className="draft-row" key={i}>
+                      <span>{i + 1}</span>
+                      <div>
+                        <strong>{s.name}</strong>
+                        <small>{s.ai ? "С ИИ" : "Самостоятельно"}</small>
+                      </div>
+                      <button
+                        aria-label="Поднять этап"
+                        disabled={i === 0}
+                        onClick={() => {
+                          const d = [...draft];
+                          [d[i - 1], d[i]] = [d[i], d[i - 1]];
+                          setDraft(d);
+                        }}
+                      >
+                        <ChevronUp size={17} />
+                      </button>
+                      <button
+                        aria-label="Опустить этап"
+                        disabled={i === draft.length - 1}
+                        onClick={() => {
+                          const d = [...draft];
+                          [d[i + 1], d[i]] = [d[i], d[i + 1]];
+                          setDraft(d);
+                        }}
+                      >
+                        <ChevronDown size={17} />
+                      </button>
+                      <button
+                        aria-label="Удалить этап"
+                        onClick={() =>
+                          setDraft(draft.filter((_, j) => i !== j))
+                        }
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {draft.every((s) => s.ai) && (
+                  <p>
+                    Добавь самостоятельную попытку, чтобы помощь ИИ не заменила
+                    всю работу.
+                  </p>
+                )}
+                <div className="actions">
+                  <button className="primary" onClick={save}>
+                    Сохранить методику
+                  </button>
+                  <button
+                    className="secondary"
+                    disabled={draft.length < 2 || !title.trim()}
+                    onClick={() =>
+                      start({
+                        title,
+                        category: "Моя методика",
+                        time: "Свой темп",
+                        description: "",
+                        steps: draft,
+                      })
+                    }
+                  >
+                    Попробовать
+                  </button>
+                </div>
+                {notice && <p role="status">{notice}</p>}
+                <p className="small">
+                  Методики сохраняются в этом браузере. Общая библиотека
+                  сообщества это следующий этап проекта.
+                </p>
+              </section>
+            </div>
+          </>
+        )}
+        {view === "run" && run && (
+          <>
+            <div className="eyebrow">Рабочая тетрадь / {run.title}</div>
+            <h1>{done ? "Методика пройдена" : step?.name}</h1>
+            <div className="run-grid">
+              <section className="paper">
+                {done ? (
+                  <>
+                    <h2>Что осталось с тобой?</h2>
+                    <p>
+                      Сравни первую попытку и последнее объяснение. Попробуй
+                      похожее задание без помощи.
+                    </p>
+                    {run.steps.map((s, i) => (
+                      <div className="summary" key={i}>
+                        <strong>
+                          {i + 1}. {s.name}
+                        </strong>
+                        <p>{notes[i] || "Запись не добавлена"}</p>
+                      </div>
+                    ))}
+                    <button className="primary" onClick={() => nav("methods")}>
+                      Вернуться к методикам
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className={step?.ai ? "badge ai" : "badge"}>
+                      {step?.ai ? "Этап с помощью ИИ" : "Самостоятельный этап"}
+                    </span>
+                    <p>{step?.description}</p>
+                    {index === 0 && (
+                      <div className="example">
+                        <strong>Учебная задача</strong>
+                        <p>
+                          Используй свою задачу. Для программирования можно
+                          попробовать: найти второе по величине уникальное число
+                          в списке [4, 7, 7, 2, 9].
+                        </p>
+                      </div>
+                    )}
+                    {!step?.ai && (
+                      <div className="timer">
+                        <Clock size={18} />
+                        <span>
+                          {Math.floor(seconds / 60)}:
+                          {String(seconds % 60).padStart(2, "0")}
+                        </span>
+                        <button onClick={() => setTicking(!ticking)}>
+                          {ticking ? "Пауза" : "Включить таймер"}
+                        </button>
+                        <small>10 минут на собственную попытку</small>
+                      </div>
+                    )}
+                    <label htmlFor="notes">
+                      {step?.ai
+                        ? "Твой вопрос или объяснение для ИИ"
+                        : "Твоя рабочая запись"}
+                    </label>
+                    <textarea
+                      id="notes"
+                      rows={7}
+                      value={notes[index] || ""}
+                      onChange={(e) =>
+                        setNotes({ ...notes, [index]: e.target.value })
+                      }
+                      placeholder="Запиши свои мысли здесь…"
+                    />
+                    {step?.ai && (
+                      <>
+                        <button
+                          className="secondary"
+                          disabled={!notes[index]?.trim()}
+                          onClick={() =>
+                            setResponse(
+                              step.name === "Подсказка ИИ"
+                                ? "Демонстрационная подсказка к примеру: что изменится, если сначала убрать повторяющиеся числа? Подумай, как после этого определить второе по величине значение. Готовый код пока не нужен."
+                                : "Демонстрационная проверка: объясни, почему выбранный подход работает, и проверь крайние случаи. Для примера со списком: что делать, если уникальных чисел меньше двух? Это образец обратной связи, а не оценка твоего текста.",
+                            )
+                          }
+                        >
+                          Показать пример ответа ИИ
+                        </button>
+                        <p className="small">
+                          Демо без подключённой модели. Ответ заранее
+                          подготовлен и не анализирует твой текст.
+                        </p>
+                        {response && (
+                          <div className="ai-response">
+                            <strong>Пример ответа наставника</strong>
+                            <p>{response}</p>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    <div className="actions">
+                      <button
+                        className="secondary"
+                        disabled={index === 0}
+                        onClick={() => {
+                          setIndex(index - 1);
+                          setResponse("");
+                          setTicking(false);
+                        }}
+                      >
+                        Предыдущий этап
+                      </button>
+                      <button
+                        className="primary"
+                        disabled={!notes[index]?.trim()}
+                        onClick={() => {
+                          if (index === run.steps.length - 1) setDone(true);
+                          else setIndex(index + 1);
+                          setResponse("");
+                          setTicking(false);
+                        }}
+                      >
+                        {index === run.steps.length - 1
+                          ? "Завершить"
+                          : "Следующий этап"}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </section>
+              <section className="paper run-outline">
+                <h2>Маршрут методики</h2>
+                {run.steps.map((s, i) => (
+                  <div
+                    className={i === index && !done ? "route current" : "route"}
+                    key={i}
+                  >
+                    <span>
+                      {i < index || done ? <Check size={16} /> : i + 1}
+                    </span>
+                    <div>
+                      {s.name}
+                      <small>{s.ai ? "С ИИ" : "Самостоятельно"}</small>
+                    </div>
+                  </div>
+                ))}
+                <p className="small">
+                  Записи прохождения остаются в текущей сессии. Скопируй важные
+                  мысли перед закрытием страницы.
+                </p>
+              </section>
+            </div>
+          </>
+        )}
+        <footer className="page-footer">
+          <span>OYLAN — думай, пробуй, проверяй.</span>
+          <span>Сайт ещё в работе. Можно пробовать!</span>
+        </footer>
+      </main>
+    </div>
+  );
 }
